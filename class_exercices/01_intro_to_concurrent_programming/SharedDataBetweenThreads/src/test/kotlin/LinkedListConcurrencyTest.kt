@@ -33,8 +33,12 @@ class LinkedListConcurrencyTest {
 
         // Verifica se o tamanho da lista é diferente do esperado
         // Devido à concorrência, o tamanho pode ser menor que o esperado
-        println("Expected sharedList size: ${N_OF_THREADS * N_OF_REPS}")
-        println("Real sharedList size: ${sharedList.size}")
+        println()
+        println("======= RESULTS =======")
+        println("Shared Linked List Size")
+        println("Expected: ${N_OF_THREADS * N_OF_REPS}")
+        println("Real:      ${sharedList.size}")
+        println()
         assertNotEquals(N_OF_THREADS * N_OF_REPS, sharedList.size)
     }
 }
