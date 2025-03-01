@@ -1,4 +1,1 @@
-class Main () {
-
-}
-
+class Main

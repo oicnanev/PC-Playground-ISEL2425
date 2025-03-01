@@ -1,9 +1,8 @@
-import java.util.*
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Test
+import java.util.LinkedList
 
 class LinkedListConcurrencyTest {
-
     // LinkedList partilhada entre as threads
     private val sharedList = LinkedList<Int>()
 
@@ -16,13 +15,12 @@ class LinkedListConcurrencyTest {
     @Test
     fun `test concurrent modifications to LinkedList`() {
         // Cria uma lista de threads
-        val threads = List(N_OF_THREADS) {
-            Thread {
-                // Cada thread adiciona N_OF_REPS elementos à LinkedList
-                repeat(N_OF_REPS) {
-                    sharedList.add(it)
-                }
-            }
+        val threads = mutableListOf<Thread>()
+
+        // Criar as threads
+        for (i in 0 until N_OF_THREADS) {
+            val thread = createThread()
+            threads.add(thread)
         }
 
         // Inicia todas as threads
@@ -40,5 +38,14 @@ class LinkedListConcurrencyTest {
         println("Real:      ${sharedList.size}")
         println()
         assertNotEquals(N_OF_THREADS * N_OF_REPS, sharedList.size)
+    }
+
+    private fun createThread(): Thread {
+        return Thread {
+            // Cada thread adiciona N_OF_REPS elementos à LinkedList
+            repeat(N_OF_REPS) {
+                sharedList.add(it)
+            }
+        }
     }
 }
