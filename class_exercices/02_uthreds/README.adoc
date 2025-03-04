@@ -22,5 +22,5 @@ To develop and run _uthreads_ with Visual Studio Code in a container, use the fo
 ** `gcc --version` - Should print something like `gcc (Debian 12.2.0-14) 12.2.0`, meaning that the C development tools are available.
 * To reopen Visual Studio Code on the host OS, use the bottom left corner and select `Reopen Folder Locally`.
 
-[Exercices](./answers.md)
+## link:Exercices[answers.md]
 
