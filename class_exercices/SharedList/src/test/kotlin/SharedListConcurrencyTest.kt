@@ -19,8 +19,8 @@ class SharedListConcurrencyTest {
 
     // Constantes para o número de threads e repetições
     companion object {
-        const val N_OF_THREADS = 10
-        const val N_OF_REPS = 10_000
+        const val N_OF_THREADS = 100
+        const val N_OF_REPS = 100_000
     }
 
     @Test
