@@ -131,7 +131,7 @@ object Ex2 {
 ** A exceção é lançada na linha `logger.info("Caught exception {} - {}", ex.javaClass.simpleName, ex.message)`. A exceção é lançada porque a *coroutine* foi cancelada e o `delay` lança uma `CancellationException`.
 
 * What is the type of the exception being thrown? Does that type derive from `kotlinx.coroutines.CancellationException`?
-** O tipo da exceção lançada é `job.CancellationException`. Não, o tipo não deriva de `kotlinx.coroutines.CancellationException`.
+** O tipo da exceção lançada é `jobCancellationException`. Sim, o tipo deriva de `kotlinx.coroutines.CancellationException`.
 
 * Why does the first log message after `job.cancel` have `isCompleted=false`, while the log message after `delay(1)` has `isCompleted=true`?
 ** A primeira mensagem de log após `job.cancel` tem `isCompleted=false` porque a *coroutine* ainda não terminou de executar. O `delay(1)` é uma chamada de suspensão que permite que a *coroutine* cancele a execução e complete o trabalho. Assim, quando o `delay(1)` termina, a *coroutine* já foi cancelada e está completa.
