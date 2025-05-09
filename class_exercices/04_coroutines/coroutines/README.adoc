@@ -1,0 +1,241 @@
+= Exercises on coroutines and structured concurrency
+
+== Introduction
+
+Set of exercises about coroutines and structured concurrency.
+
+== Exercises
+
+=== Exercise 0
+
+Consider the following definitions.
+
+.Exercise 0
+[source, kotlin]
+----
+private val logger = LoggerFactory.getLogger("labs")
+
+fun logJobState(job: Job) {
+    logger.info("isActive={}, isCancelled={}, isCompleted={}", job.isActive, job.isCancelled, job.isCompleted)
+}
+
+object Ex0 {
+    @JvmStatic
+    fun main(args: Array<String>) {
+        // alternative: runBlocking(Dispatchers.Default) {
+        runBlocking {
+            logger.info("top coroutine started")
+            launch {
+                logger.info("child coroutine started")
+            }
+            logger.info("Before thread sleep")
+            Thread.sleep(1000)
+            // alternative: delay(1000)
+            logger.info("After sleep/delay on top-coroutine")
+        }
+    }
+}
+----
+
+* Why does `child coroutine started` only appear after `After sleep/delay on top-coroutine`?
+** Porque o *launch* lança uma *coroutine* sem bloquear a thread corrente e retorna a referência para a *coroutine* como um *Job*. Este *Job* é depois executado pelo *dispatcher* padrão, que é o *Default*. O *runBlocking* bloqueia a thread corrente até que todas as *coroutines* filhas terminem. Assim, o *runBlocking* não termina até que o *Thread.sleep(1000)* termine. O *launch* não bloqueia a thread corrente, então a execução continua e o *Thread.sleep(1000)* é executado antes do *child coroutine started*.
+
+* Will the behavior be different if `sleep` is replaced with `delay`? If so, explain why?
+** Sim, o comportamento é diferente. O *delay* não bloqueia a thread corrente, enquanto o *sleep* bloqueia a thread corrente. Assim, quando o *delay* é chamado, a execução da *coroutine* é suspensa e a thread corrente pode ser usada para executar outras tarefas, como a execução da *child coroutine*. Portanto, o *child coroutine started* aparece antes de `After sleep/delay on top-coroutine`.
+
+* Will the behavior be different if we keep `sleep` and use 
+`runBlocking(Dispatchers.Default)` to start the top coroutine? If so, explain why?
+** O comportamento já vai ser diferente. O *runBlocking(Dispatchers.Default)* usa diversos workers(threads) para executar o trabalho. Então o *child coroutine started* aparece antes de `After sleep/delay on top-coroutine`, porque o *runBlocking* não bloqueia a thread corrente, mas sim o dispatcher padrão. Assim, a execução da *child coroutine* é executada noutra thread enquanto o *Thread.sleep(1000)* está em execução.
+
+=== Exercise 1
+
+Consider the following definitions.
+
+.Exercise 1
+[source, kotlin]
+----
+object Ex1 {
+    @JvmStatic
+    fun main(args: Array<String>) {
+        runBlocking {
+            val continuationInterceptor: ContinuationInterceptor = coroutineContext[ContinuationInterceptor]
+                ?: throw IllegalStateException("coroutine context does not have expected element")
+
+            logger.info("step 0")
+            withContext(Dispatchers.Default) {
+                logger.info("step 1")
+                withContext(continuationInterceptor) {
+                    logger.info("step 2")
+                }
+                logger.info("step 3")
+            }
+            logger.info("step 4")
+        }
+    }
+}
+----
+
+* Without running the code, write down on which thread (or thread group) will each of the `logger.info` statements be executed.
+** step 0: main
+** step 1: DefaultDispatcher-worker-1
+** step 2: ContinuationInterceptor (main)
+** step 3: DefaultDispatcher-worker-1
+** step 4: main
+
+* Confirm your analysis by running the code.
+** Enganei-me e corri logo o código 😳
+
+* What does the following statement do?
+----
+val continuationInterceptor: ContinuationInterceptor = coroutineContext[ContinuationInterceptor]
+                ?: throw IllegalStateException("coroutine context does not have expected element")
+----
+** A linha acima tenta obter o elemento `ContinuationInterceptor` do contexto da *coroutine*. Se não conseguir, lança uma exceção `IllegalStateException`.
+
+* Why can a `ContinuationInterceptor` be used as a context?
+** Um `ContinuationInterceptor` pode ser usado como um contexto porque ele é um elemento do contexto da *coroutine* que pode ser usado para interceptar a continuação de uma *coroutine*. Permite controlar como e onde a continuação de uma *coroutine* é executada.
+
+=== Exercise 2
+
+Consider the following definitions.
+
+.Exercise 2
+[source, kotlin]
+----
+object Ex2 {
+    @JvmStatic
+    fun main(args: Array<String>) {
+        runBlocking {
+            val job = launch {
+                try {
+                    logger.info("Inner coroutine started")
+                    delay(2000)
+                } catch (ex: Throwable) {
+                    logger.info("Caught exception {} - {}", ex.javaClass.simpleName, ex.message)
+                }
+            }
+            delay(1000)
+            logJobState(job)
+            logger.info("Cancelling inner coroutine")
+            job.cancel()
+            logJobState(job)
+            delay(1)
+            logJobState(job)
+        }
+        logger.info("after runBlocking")
+    }
+}
+----
+
+* There is an exception being thrown inside the inner coroutine. Where is that exceptions thrown? Why is that exception thrown?
+** A exceção é lançada na linha `logger.info("Caught exception {} - {}", ex.javaClass.simpleName, ex.message)`. A exceção é lançada porque a *coroutine* foi cancelada e o `delay` lança uma `CancellationException`.
+
+* What is the type of the exception being thrown? Does that type derive from `kotlinx.coroutines.CancellationException`?
+** O tipo da exceção lançada é `job.CancellationException`. Não, o tipo não deriva de `kotlinx.coroutines.CancellationException`.
+
+* Why does the first log message after `job.cancel` have `isCompleted=false`, while the log message after `delay(1)` has `isCompleted=true`?
+** A primeira mensagem de log após `job.cancel` tem `isCompleted=false` porque a *coroutine* ainda não terminou de executar. O `delay(1)` é uma chamada de suspensão que permite que a *coroutine* cancele a execução e complete o trabalho. Assim, quando o `delay(1)` termina, a *coroutine* já foi cancelada e está completa.
+=== Exercise 3
+
+Consider the following definitions.
+
+.Exercise 3
+[source, kotlin]
+----
+object Ex3 {
+    @JvmStatic
+    fun main(args: Array<String>) {
+        val scheduledExecutor = Executors.newSingleThreadScheduledExecutor()
+        try {
+            runBlocking {
+                logger.info("top coroutine starting")
+                val job = launch {
+                    try {
+                        suspendCancellableCoroutine { continuation ->
+                            scheduledExecutor.schedule(
+                                {
+                                    logger.info("Calling continuation")
+                                    continuation.resume(Unit)
+                                },
+                                1000,
+                                TimeUnit.MILLISECONDS
+                            )
+                        }
+                        logger.info("After suspendCancellableCoroutine")
+                    } catch (ex: Throwable) {
+                        logger.info("Caught exception {} - {}", ex.javaClass.simpleName, ex.message)
+                    }
+                }
+                delay(500)
+                job.cancel()
+            }
+        } finally {
+            scheduledExecutor.shutdown()
+        }
+    }
+}
+----
+
+* Is any exception thrown in the child coroutine? If so, why? Where is that exception thrown?
+** Sim, uma exceção é lançada na *coroutine* filha. A exceção é lançada porque a *coroutine* foi cancelada antes que o `suspendCancellableCoroutine` pudesse ser concluído. A exceção é lançada na linha `continuation.resume(Unit)`.
+
+* Is the `continuation.resume` called before or after the `suspendCancellableCoroutine` call completes? Do you see any problem?
+** O `continuation.resume` é chamado depois  do `suspendCancellableCoroutine` ser concluído. O problema é que a *coroutine* foi cancelada antes que o `suspendCancellableCoroutine` pudesse ser concluído, então a continuação não pode ser chamada.
+
+* What is the behavior if the delay duration is changed to 1500 milliseconds?
+** Se a duração do atraso for alterada para 1500 milissegundos, a *coroutine* não será cancelada antes que o `suspendCancellableCoroutine` seja concluído. Assim, a continuação será chamada e a mensagem `After suspendCancellableCoroutine` será exibida.
+
+* What is the behavior if the delay duration is kept at 500 milliseconds and the `suspendCancellableCoroutine` is replaced with a `suspendCoroutine`?
+** Se a duração do atraso for mantida em 500 milissegundos e o `suspendCancellableCoroutine` for substituído por um `suspendCoroutine`, a *coroutine* será cancelada na mesma e a mensagem `After suspendCancellableCoroutine` será exibida.
+
+=== Exercise 4
+
+Consider the following definitions.
+
+.Exercise 4
+[source, kotlin]
+----
+object Ex4 {
+    @JvmStatic
+    fun main(args: Array<String>) {
+        runBlocking {
+            logger.info("top starting")
+            val job1 = launch {
+                try {
+                    delay(1000)
+                    throw Exception("Oh No!")
+                    logger.info("inner 1 ending")
+                } catch (ex: Throwable) {
+                    logger.info("inner 1: caught exception {} - {}", ex.javaClass.simpleName, ex.message)
+                    throw ex
+                }
+            }
+
+            val job2 = launch {
+                try {
+                    delay(2000)
+                    logger.info("inner 2 ending")
+                } catch (ex: Throwable) {
+                    logger.info("inner 2: caught exception {} - {}", ex.javaClass.simpleName, ex.message)
+                }
+            }
+
+            try {
+                delay(2000)
+            } catch (ex: Throwable) {
+                logger.info("top: caught exception {} - {}", ex.javaClass.simpleName, ex.message)
+            }
+            logger.info("top ending")
+        }
+    }
+}
+----
+
+* Why are exceptions thrown in the top coroutine and in the second child coroutine? In which statements are those exceptions thrown?
+** As exceções são lançadas na *coroutine* superior e na segunda *coroutine* filha porque ambas foram canceladas. A exceção na *coroutine* superior é lançada na linha `throw Exception("Oh No!")` e a exceção na segunda *coroutine* filha é lançada na linha `delay(2000)`.
+
+* Does the `runBlocking` call end by throwing an exception?
+** Não, a chamada `runBlocking` não termina lançando uma exceção. A exceção é capturada no bloco `try-catch` e a execução continua.
+
+* If `throw Exception(...)` is replaced with `throw CancellationException()`, what is the change in behavior?
+** Se `throw Exception(...)` for substituído por `throw CancellationException()`, a exceção `CancellationException` será lançada e a *coroutine* será cancelada. A execução não continuará e a mensagem `top ending` não será exibida.
